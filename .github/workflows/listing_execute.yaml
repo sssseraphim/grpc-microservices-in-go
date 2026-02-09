@@ -17,34 +17,41 @@ jobs:
     name: "Executing listing ${{ github.event.inputs.listing }}"
     runs-on: ubuntu-latest
     steps:
-      - id: go-cache-paths
-        run: |
-          echo "::set-output name=go-build::$(go env GOCACHE)"
-          echo "::set-output name=go-mod::$(go env GOMODCACHE)"
-
       - uses: actions/checkout@v3
 
       - name: Install Go
         uses: actions/setup-go@v3
         with:
-          go-version: 1.17
+          go-version: "1.17"
+          cache: true  # Enable caching automatically
 
       - name: Install Protoc Dependencies
         run: |
-          sudo apt-get install -y protobuf-compiler golang-goprotobuf-dev
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
           go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
           go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
-      # Go build cache
-      - name: Go Build Cache
-        uses: actions/cache@v2
-        with:
-          path: ${{ steps.go-cache-paths.outputs.go-build }}
-          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
-
-      - name: Run
+      - name: Find and execute listing
         run: |
-          cd "$(find . -name listing_${{ github.event.inputs.listing }})"
-          ./run.sh ${{ env.GITHUB_USERNAME }} ${{ env.GITHUB_EMAIL }} 
+          # Find the directory (handle potential multiple matches)
+          LISTING_DIR=$(find . -type d -name "listing_${{ github.event.inputs.listing }}" | head -1)
           
-
+          if [ -z "$LISTING_DIR" ]; then
+            echo "❌ Error: Directory 'listing_${{ github.event.inputs.listing }}' not found"
+            exit 1
+          fi
+          
+          echo "📁 Found directory: $LISTING_DIR"
+          
+          cd "$LISTING_DIR"
+          
+          # Make run.sh executable if it exists
+          if [ -f "run.sh" ]; then
+            chmod +x run.sh
+            ./run.sh "$GITHUB_USERNAME" "$GITHUB_EMAIL"
+          else
+            echo "❌ Error: run.sh not found in $LISTING_DIR"
+            exit 1
+          fi
